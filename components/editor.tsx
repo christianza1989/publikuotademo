@@ -12,6 +12,7 @@ interface EditorProps {
 export default function Editor({ onChange, value }: EditorProps) {
     return (
         <CKEditor
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             editor={ClassicEditor as any}
             data={value}
             onChange={(event, editor) => {
