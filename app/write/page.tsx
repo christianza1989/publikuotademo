@@ -7,10 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import Editor from "@/components/editor";
 import { KeywordInput } from "@/components/keyword-input";
 import { availableSites } from "@/lib/sites";
 import { Checkbox } from "@/components/ui/checkbox";
+import dynamic from 'next/dynamic';
+
+const Editor = dynamic(() => import('@/components/editor'), { ssr: false });
 
 export default function WritePage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -26,11 +28,6 @@ export default function WritePage() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [generatedImageUrl, setGeneratedImageUrl] = useState('');
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
-  const [editorLoaded, setEditorLoaded] = useState(false);
-
-  useEffect(() => {
-    setEditorLoaded(true);
-  }, []);
 
   const handleSiteSelection = (siteId: string) => {
     setSelectedSites(prev => 
@@ -314,7 +311,6 @@ export default function WritePage() {
         <CardContent>
             <Editor
                 onChange={(data) => setEditableArticle(data)}
-                editorLoaded={editorLoaded}
                 value={editableArticle}
             />
         </CardContent>
