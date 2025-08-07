@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -173,20 +174,44 @@ export default function WritePage() {
     }
     setIsPublishing(true);
     setError("");
+
+    // Find the image file from the form input
+    const imageInput = document.getElementById('image') as HTMLInputElement;
+    const imageFile = imageInput.files ? imageInput.files[0] : null;
+
+    const formData = new FormData();
+    formData.append('title', articleTitle);
+    formData.append('content', editableArticle);
+    selectedSites.forEach(siteId => {
+        formData.append('siteIds', siteId);
+    });
+    if (imageFile) {
+        formData.append('image', imageFile);
+    }
+
     try {
         const response = await fetch('/api/publish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: articleTitle,
-                content: editableArticle,
-                siteIds: selectedSites,
-            }),
+            body: formData, // Send as multipart/form-data
         });
-        if (!response.ok) throw new Error("Publikavimas nepavyko.");
-        const results = await response.json();
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Publikavimas nepavyko.");
+        }
+        const { results }: { results: { site: string; success: boolean; error?: string }[] } = await response.json();
         console.log("Publishing results:", results);
-        alert("Straipsnis sėkmingai publikuotas!");
+        
+        const successfulSites = results.filter(r => r.success).map(r => r.site);
+        if (successfulSites.length > 0) {
+            alert(`Straipsnis sėkmingai publikuotas svetainėse: ${successfulSites.join(', ')}`);
+        }
+
+        const failedSites = results.filter(r => !r.success);
+        if (failedSites.length > 0) {
+            const errorMessages = failedSites.map(r => `${r.site}: ${r.error}`).join('\n');
+            setError(`Klaida publikuojant šiose svetainėse:\n${errorMessages}`);
+        }
+
     } catch (err) {
         setError(err instanceof Error ? err.message : "An unknown error occurred during publishing.");
     } finally {
@@ -285,7 +310,9 @@ export default function WritePage() {
             {generatedImageUrl && (
                 <div className="space-y-2">
                     <Label>Sugeneruotas paveikslėlis</Label>
-                    <img src={generatedImageUrl} alt="Sugeneruotas AI" className="rounded-md border max-w-sm" />
+                    <div className="relative w-full max-w-sm h-64">
+                        <Image src={generatedImageUrl} alt="Sugeneruotas AI" layout="fill" objectFit="contain" className="rounded-md border" />
+                    </div>
                     <p className="text-sm text-gray-500">Norėdami panaudoti šį paveikslėlį, išsaugokite jį ir įkelkite viršuje.</p>
                 </div>
             )}

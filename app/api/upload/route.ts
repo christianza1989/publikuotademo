@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { IncomingForm } from 'formidable';
 import { auth } from '@/auth';
 
 export const config = {

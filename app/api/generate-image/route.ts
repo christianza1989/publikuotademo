@@ -60,8 +60,9 @@ export async function POST(req: NextRequest) {
 
         return NextResponse.json({ imageUrl });
 
-    } catch (error: any) {
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "An unknown error occurred";
         console.error('[IDEOGRAM_API_ERROR]', error);
-        return NextResponse.json({ error: error.message || "Vidinė serverio klaida generuojant paveikslėlį." }, { status: 500 });
+        return NextResponse.json({ error: errorMessage || "Vidinė serverio klaida generuojant paveikslėlį." }, { status: 500 });
     }
 }
