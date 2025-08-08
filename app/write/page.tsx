@@ -174,44 +174,21 @@ export default function WritePage() {
     }
     setIsPublishing(true);
     setError("");
-
-    // Find the image file from the form input
-    const imageInput = document.getElementById('image') as HTMLInputElement;
-    const imageFile = imageInput.files ? imageInput.files[0] : null;
-
-    const formData = new FormData();
-    formData.append('title', articleTitle);
-    formData.append('content', editableArticle);
-    selectedSites.forEach(siteId => {
-        formData.append('siteIds', siteId);
-    });
-    if (imageFile) {
-        formData.append('image', imageFile);
-    }
-
     try {
         const response = await fetch('/api/publish', {
             method: 'POST',
-            body: formData, // Send as multipart/form-data
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: articleTitle,
+                content: editableArticle,
+                siteIds: selectedSites,
+            }),
         });
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "Publikavimas nepavyko.");
-        }
-        const { results }: { results: { site: string; success: boolean; error?: string }[] } = await response.json();
+        if (!response.ok) throw new Error("Publikavimas nepavyko.");
+        const results = await response.json();
+        // Handle results (e.g., show success message)
         console.log("Publishing results:", results);
-        
-        const successfulSites = results.filter(r => r.success).map(r => r.site);
-        if (successfulSites.length > 0) {
-            alert(`Straipsnis sėkmingai publikuotas svetainėse: ${successfulSites.join(', ')}`);
-        }
-
-        const failedSites = results.filter(r => !r.success);
-        if (failedSites.length > 0) {
-            const errorMessages = failedSites.map(r => `${r.site}: ${r.error}`).join('\n');
-            setError(`Klaida publikuojant šiose svetainėse:\n${errorMessages}`);
-        }
-
+        alert("Straipsnis sėkmingai publikuotas!");
     } catch (err) {
         setError(err instanceof Error ? err.message : "An unknown error occurred during publishing.");
     } finally {

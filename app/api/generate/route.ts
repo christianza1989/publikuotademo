@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from 'zod';
-import { auth } from '@/auth';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
@@ -14,11 +13,6 @@ const articleSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-    const session = await auth();
-    if (!session || !session.user) {
-        return NextResponse.json({ error: 'Neturite teisės atlikti šio veiksmo.' }, { status: 401 });
-    }
-
     try {
         const body = await req.json();
         const validation = articleSchema.safeParse(body);
