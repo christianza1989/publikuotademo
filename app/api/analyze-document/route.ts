@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
             const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
             const analysis = JSON.parse(cleanedJson);
             return NextResponse.json({ ...analysis, originalText: truncatedContent });
-        } catch (error) {
+        } catch (jsonError) {
             console.error("Failed to parse JSON from AI response:", responseText);
             throw new Error("AI returned an invalid response format.");
         }

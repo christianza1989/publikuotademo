@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 // This component will be dynamically imported in the page
@@ -22,7 +23,6 @@ const editorConfiguration = {
 export default function Editor({ onChange, value }: EditorProps) {
     return (
         <CKEditor
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             editor={ClassicEditor as any}
             config={editorConfiguration as any}
             data={value}
