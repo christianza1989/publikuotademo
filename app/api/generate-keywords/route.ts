@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { z } from 'zod';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
-
 const keywordsSchema = z.object({
-    title: z.string().min(3, { message: "Straipsnio pavadinimas per trumpas" }).max(150),
+    title: z.string().min(3, { message: "Pavadinimas per trumpas" }).max(150),
+    topic: z.string().min(3, { message: "Temos pavadinimas per trumpas" }).max(100),
+    model: z.string(),
 });
 
 export async function POST(req: NextRequest) {
@@ -16,23 +15,49 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: validation.error.errors[0].message }, { status: 400 });
         }
 
-        const { title } = validation.data;
+        const { title, topic, model } = validation.data;
 
-        const prompt = `Tu esi SEO ekspertas. Sugeneruok 10 svarbiausių ir relevantiškiausių SEO raktinių žodžių (keywords) straipsniui pavadinimu: "${title}". Atsakymą pateik kaip JSON masyvą. Pavyzdys: ["raktinis žodis 1", "raktinis žodis 2"]`;
+        const prompt = `
+            Įsivaizduok, kad esi SEO strategas. Tavo užduotis - sugeneruoti 10-15 aukštos kokybės, SEO optimizuotų raktinių žodžių lietuvių kalba straipsniui, kurio tema yra "${topic}", o pavadinimas - "${title}".
 
-        const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL as string });
-        const result = await model.generateContent(prompt);
-        const response = result.response;
-        const text = response.text();
+            Raktiniai žodžiai PRIVALO apimti:
+            1.  **Pagrindinius Raktinius Žodžius:** Tiesiogiai susijusius su "${title}".
+            2.  **LSI Raktinius Žodžius (Latent Semantic Indexing):** Semantiškai susijusius terminus, kurie padeda paieškos sistemoms suprasti kontekstą (pvz., jei tema "kava", LSI žodžiai galėtų būti "espresas", "kofeinas", "barista").
+            3.  **Ilgos Uodegos Raktinius Žodžius (Long-tail Keywords):** Specifiškesnes, 3+ žodžių frazes, į kurias taikosi vartotojai, ieškantys konkrečios informacijos.
 
-        // Clean up the response to be a valid JSON array
-        const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-        const keywords = JSON.parse(cleanedText);
+            Pateik tik raktinius žodžius, atskirtus kableliais.
+        `;
+
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.SITE_URL || '',
+                "X-Title": process.env.SITE_NAME || '',
+            },
+            body: JSON.stringify({
+                "model": model,
+                "messages": [
+                    { "role": "user", "content": prompt }
+                ]
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error.message || "OpenRouter API failed.");
+        }
+
+        const data = await response.json();
+        const text = data.choices[0].message.content;
+        
+        const keywords = text.split(',').map((k: string) => k.trim()).filter((k: string) => k);
 
         return NextResponse.json({ keywords });
 
     } catch (error) {
-        console.error('[GEMINI_KEYWORDS_API_ERROR]', error);
-        return NextResponse.json({ error: "Vidinė serverio klaida." }, { status: 500 });
+        console.error('[OPENROUTER_KEYWORDS_API_ERROR]', error);
+        return NextResponse.json({ error: "Failed to generate keywords." }, { status: 500 });
     }
 }

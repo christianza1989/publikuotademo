@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,9 +11,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { KeywordInput } from "@/components/keyword-input";
 import { availableSites } from "@/lib/sites";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ModelSelector, models } from "@/components/model-selector";
 import dynamic from 'next/dynamic';
 
 const Editor = dynamic(() => import('@/components/editor'), { ssr: false });
+
+interface Heading {
+    title: string;
+    context: string;
+}
+
+interface SeoAnalysis {
+    seoScore: number;
+    goodPoints: string[];
+    suggestions: string[];
+}
 
 export default function WritePage() {
   const [isLoading, setIsLoading] = useState(false);
@@ -21,19 +33,142 @@ export default function WritePage() {
   const [isKeywordsLoading, setIsKeywordsLoading] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isProofreading, setIsProofreading] = useState(false);
+  const [isFaqLoading, setIsFaqLoading] = useState(false);
+  const [isMetaLoading, setIsMetaLoading] = useState(false);
+  const [isSeoLoading, setIsSeoLoading] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [seoAnalysis, setSeoAnalysis] = useState<SeoAnalysis | null>(null);
+  const [isSeoOptimized, setIsSeoOptimized] = useState(false);
+  const [isBatchImageLoading, setIsBatchImageLoading] = useState(false);
+  const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [editableArticle, setEditableArticle] = useState("");
   const [error, setError] = useState("");
   const [topic, setTopic] = useState("");
   const [generatedTitles, setGeneratedTitles] = useState<string[]>([]);
   const [articleTitle, setArticleTitle] = useState("");
+  const [metaTitle, setMetaTitle] = useState("");
+  const [metaDescription, setMetaDescription] = useState("");
   const [keywords, setKeywords] = useState<string[]>([]);
   const [generatedImageUrl, setGeneratedImageUrl] = useState('');
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
+  const [maintainStyle, setMaintainStyle] = useState(false);
+  const [originalText, setOriginalText] = useState('');
+  const [selectedModel, setSelectedModel] = useState(models[0].id);
+  const [headings, setHeadings] = useState<Heading[]>([]);
+  const [selectedHeadings, setSelectedHeadings] = useState<string[]>([]);
+
+  useEffect(() => {
+    handleRefreshHeadings();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editableArticle]);
+
+
+  const handleRefreshHeadings = () => {
+    if (typeof window !== 'undefined' && editableArticle) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(editableArticle, 'text/html');
+        const foundHeadings: Heading[] = [];
+        const h2s = doc.querySelectorAll('h2');
+        
+        h2s.forEach((h2) => {
+            let content = '';
+            let nextElement = h2.nextElementSibling;
+            while (nextElement && nextElement.tagName !== 'H2') {
+                content += nextElement.outerHTML;
+                nextElement = nextElement.nextElementSibling;
+            }
+            foundHeadings.push({ title: h2.innerText, context: h2.innerText + ' ' + content });
+        });
+        setHeadings(foundHeadings);
+    } else {
+        setHeadings([]);
+    }
+  };
+
+  const handleHeadingSelection = (title: string) => {
+    setSelectedHeadings(prev => 
+      prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]
+    );
+  };
+
+  const handleGenerateHeadingImages = async () => {
+    if (selectedHeadings.length === 0) {
+        setError("Pasirinkite bent vieną antraštę.");
+        return;
+    }
+    setIsBatchImageLoading(true);
+    setError("");
+    try {
+        const requestsPayload = headings
+            .filter(h => selectedHeadings.includes(h.title))
+            .map(h => ({ heading: h.title, context: h.context }));
+        const response = await fetch('/api/generate-batch-images', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ requests: requestsPayload, model: selectedModel }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to generate heading images.");
+        }
+        
+        let updatedArticle = editableArticle;
+        data.results.forEach((result: { heading: string; imageUrl?: string; success: boolean }) => {
+            if (result.success && result.imageUrl) {
+                const headingTag = `<h2>${result.heading}</h2>`;
+                // eslint-disable-next-line
+                const imageTag = `<figure class="image ck-widget ck-widget_selected" contenteditable="false"><img src="${result.imageUrl}" alt="${result.heading}"><div class="ck ck-reset ck-widget__resizer" style="width: 20px; height: 20px; display: none;"></div></figure>`;
+                updatedArticle = updatedArticle.replace(headingTag, `${headingTag}\n${imageTag}`);
+            }
+        });
+        setEditableArticle(updatedArticle);
+        setSelectedHeadings([]);
+
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsBatchImageLoading(false);
+    }
+  };
 
   const handleSiteSelection = (siteId: string) => {
     setSelectedSites(prev => 
       prev.includes(siteId) ? prev.filter(id => id !== siteId) : [...prev, siteId]
     );
+  };
+
+  const handleDocumentAnalysis = async () => {
+    if (!documentFile) {
+        setError("Prašome pasirinkti dokumento failą.");
+        return;
+    }
+    setIsAnalyzing(true);
+    setError("");
+    try {
+        const formData = new FormData();
+        formData.append('file', documentFile);
+        formData.append('model', selectedModel);
+        const response = await fetch('/api/analyze-document', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to analyze document.");
+        }
+        setGeneratedTitles(data.titles || []);
+        setKeywords(data.keywords || []);
+        setOriginalText(data.originalText || '');
+        if (data.titles && data.titles.length > 0) {
+            setArticleTitle(data.titles[0]);
+        }
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsAnalyzing(false);
+    }
   };
 
   const handleGenerateTitle = async () => {
@@ -48,9 +183,12 @@ export default function WritePage() {
       const response = await fetch("/api/generate-title", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic }),
+        body: JSON.stringify({ topic, model: selectedModel }),
       });
-      if (!response.ok) throw new Error("Failed to generate titles.");
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to generate titles.");
+      }
       const data = await response.json();
       setGeneratedTitles(data.titles);
     } catch (err) {
@@ -71,9 +209,12 @@ export default function WritePage() {
       const response = await fetch("/api/generate-keywords", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: articleTitle }),
+        body: JSON.stringify({ title: articleTitle, topic, model: selectedModel }),
       });
-      if (!response.ok) throw new Error("Failed to generate keywords.");
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to generate keywords.");
+      }
       const data = await response.json();
       setKeywords(prev => [...new Set([...prev, ...data.keywords])]);
     } catch (err) {
@@ -95,7 +236,7 @@ export default function WritePage() {
       const response = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: articleTitle }),
+        body: JSON.stringify({ prompt: articleTitle, model: selectedModel }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -139,7 +280,11 @@ export default function WritePage() {
       domain: formData.get("domain"),
       length: formData.get("length"),
       tone: formData.get("tone"),
+      structure: formData.get("structure"),
       customPrompt: formData.get("customPrompt"),
+      maintainStyle: maintainStyle,
+      originalText: originalText,
+      model: selectedModel,
     };
 
     try {
@@ -174,21 +319,36 @@ export default function WritePage() {
     }
     setIsPublishing(true);
     setError("");
+    const imageInput = document.getElementById('image') as HTMLInputElement;
+    const imageFile = imageInput.files ? imageInput.files[0] : null;
+    const formData = new FormData();
+    formData.append('title', articleTitle);
+    formData.append('content', editableArticle);
+    formData.append('metaTitle', metaTitle);
+    formData.append('metaDescription', metaDescription);
+    selectedSites.forEach(siteId => formData.append('siteIds', siteId));
+    if (imageFile) {
+        formData.append('image', imageFile);
+    }
     try {
         const response = await fetch('/api/publish', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                title: articleTitle,
-                content: editableArticle,
-                siteIds: selectedSites,
-            }),
+            body: formData,
         });
-        if (!response.ok) throw new Error("Publikavimas nepavyko.");
-        const results = await response.json();
-        // Handle results (e.g., show success message)
-        console.log("Publishing results:", results);
-        alert("Straipsnis sėkmingai publikuotas!");
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Publikavimas nepavyko.");
+        }
+        const { results }: { results: { site: string; success: boolean; error?: string }[] } = await response.json();
+        const successfulSites = results.filter(r => r.success).map(r => r.site);
+        if (successfulSites.length > 0) {
+            alert(`Straipsnis sėkmingai publikuotas svetainėse: ${successfulSites.join(', ')}`);
+        }
+        const failedSites = results.filter(r => !r.success);
+        if (failedSites.length > 0) {
+            const errorMessages = failedSites.map(r => `${r.site}: ${r.error}`).join('\n');
+            setError(`Klaida publikuojant šiose svetainėse:\n${errorMessages}`);
+        }
     } catch (err) {
         setError(err instanceof Error ? err.message : "An unknown error occurred during publishing.");
     } finally {
@@ -196,12 +356,200 @@ export default function WritePage() {
     }
   };
 
+  const handleProofread = async () => {
+    if (!editableArticle) {
+        setError("Nėra teksto, kurį būtų galima taisyti.");
+        return;
+    }
+    setIsProofreading(true);
+    setError("");
+    try {
+        const response = await fetch('/api/proofread', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: editableArticle, model: selectedModel }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to proofread text.");
+        }
+        const data = await response.json();
+        setEditableArticle(data.correctedText);
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsProofreading(false);
+    }
+  };
+
+  const handleGenerateFaq = async () => {
+    if (!editableArticle) {
+        setError("Nėra straipsnio, pagal kurį būtų galima generuoti D.U.K.");
+        return;
+    }
+    setIsFaqLoading(true);
+    setError("");
+    try {
+        const response = await fetch('/api/generate-faq', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: editableArticle, model: selectedModel }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to generate FAQ.");
+        }
+        const data = await response.json();
+        setEditableArticle(prev => prev + `\n<h3>Dažniausiai Užduodami Klausimai</h3>\n` + data.faqHtml);
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsFaqLoading(false);
+    }
+  };
+
+  const handleSeoAnalysis = async () => {
+    if (!editableArticle) {
+        setError("Nėra straipsnio, kurį būtų galima analizuoti.");
+        return;
+    }
+    setIsSeoLoading(true);
+    setError("");
+    setSeoAnalysis(null);
+    try {
+        const response = await fetch('/api/analyze-seo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: editableArticle, keywords, title: articleTitle, metaDescription, model: selectedModel }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to analyze SEO.");
+        }
+        const data = await response.json();
+        setSeoAnalysis(data);
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsSeoLoading(false);
+    }
+  };
+
+  const handleRegenerateArticle = async () => {
+    if (!editableArticle || !seoAnalysis?.suggestions) {
+        setError("Nėra straipsnio arba pasiūlymų, pagal kuriuos būtų galima pergeneruoti.");
+        return;
+    }
+    setIsRegenerating(true);
+    setError("");
+    try {
+        const response = await fetch('/api/apply-seo-suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                text: editableArticle, 
+                suggestions: seoAnalysis.suggestions, 
+                title: articleTitle, 
+                metaDescription, 
+                model: selectedModel 
+            }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to apply SEO suggestions.");
+        }
+        const data = await response.json();
+        
+        let updatedArticle = editableArticle;
+        data.modifications.forEach((mod: { search: string, replace: string }) => {
+            updatedArticle = updatedArticle.replace(mod.search, mod.replace);
+        });
+
+        setEditableArticle(updatedArticle);
+        setMetaTitle(data.regeneratedMetaTitle);
+        setMetaDescription(data.regeneratedMetaDescription);
+        setSeoAnalysis(null); // Reset analysis after regeneration
+        setIsSeoOptimized(true); // Lock SEO analysis
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsRegenerating(false);
+    }
+  };
+
+  const handleGenerateMeta = async () => {
+    if (!articleTitle) {
+        setError("Nėra straipsnio pavadinimo, pagal kurį būtų galima generuoti meta aprašymus.");
+        return;
+    }
+    if (keywords.length === 0) {
+        setError("Prieš generuojant meta aprašymus, sugeneruokite raktinius žodžius.");
+        return;
+    }
+    setIsMetaLoading(true);
+    setError("");
+    try {
+        const response = await fetch('/api/generate-meta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: articleTitle, topic, keywords, model: selectedModel }),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || "Failed to generate meta descriptions.");
+        }
+        const data = await response.json();
+        setMetaTitle(data.metaTitle);
+        setMetaDescription(data.metaDescription);
+    } catch (err) {
+        setError(err instanceof Error ? err.message : "An unknown error occurred.");
+    } finally {
+        setIsMetaLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <Card>
         <CardHeader>
+            <CardTitle>Pasirinkite AI Modelį</CardTitle>
+        </CardHeader>
+        <CardContent>
+            <ModelSelector selectedModel={selectedModel} setSelectedModel={setSelectedModel} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Generuoti Iš Dokumento</CardTitle>
+          <CardDescription>Įkelkite dokumentą (.txt, .pdf, .docx, .xlsx) ir leiskite AI automatiškai pasiūlyti pavadinimus bei raktinius žodžius.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+            <div className="flex items-end gap-2">
+                <div className="flex-grow space-y-2">
+                    <Label htmlFor="document">Dokumento Failas</Label>
+                    <Input 
+                        id="document" 
+                        type="file" 
+                        accept=".txt,.pdf,.docx,.xlsx"
+                        onChange={(e) => setDocumentFile(e.target.files ? e.target.files[0] : null)}
+                    />
+                </div>
+                <Button onClick={handleDocumentAnalysis} disabled={isAnalyzing || !documentFile}>
+                    {isAnalyzing ? "Analizuojama..." : "Analizuoti Dokumentą"}
+                </Button>
+            </div>
+            <div className="flex items-center space-x-2">
+                <Checkbox id="maintain-style" checked={maintainStyle} onCheckedChange={(checked) => setMaintainStyle(Boolean(checked))} />
+                <Label htmlFor="maintain-style">Laikytis panašaus stiliaus perrašant</Label>
+            </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Sukurkite Straipsnį su AI</CardTitle>
-          <CardDescription>Užpildykite laukus, kad sugeneruotumėte unikalų straipsnį.</CardDescription>
+          <CardDescription>Užpildykite laukus rankiniu būdu arba po dokumento analizės.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -238,9 +586,22 @@ export default function WritePage() {
               <KeywordInput value={keywords} onChange={setKeywords} onGenerate={handleGenerateKeywords} isLoading={isKeywordsLoading} />
             </div>
 
+            <div className="space-y-2">
+              <Label>Meta Aprašymai</Label>
+              <div className="space-y-2 rounded-md border p-4">
+                <div className="flex items-center gap-2">
+                  <Input value={metaTitle} onChange={(e) => setMetaTitle(e.target.value)} placeholder="Meta Title" />
+                  <Button type="button" onClick={handleGenerateMeta} disabled={isMetaLoading || !articleTitle}>
+                    {isMetaLoading ? "Generuojama..." : "Generuoti"}
+                  </Button>
+                </div>
+                <Textarea value={metaDescription} onChange={(e) => setMetaDescription(e.target.value)} placeholder="Meta Description" />
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="domain">Jūsų svetainės nuoroda</Label>
+                <Label htmlFor="domain">Jūsų atgalinė nuoroda</Label>
                 <Input id="domain" name="domain" placeholder="Pvz., manoportalas.lt" required />
               </div>
               <div className="space-y-2">
@@ -267,6 +628,18 @@ export default function WritePage() {
                       </SelectContent>
                   </Select>
               </div>
+              <div className="space-y-2">
+                  <Label htmlFor="structure">Straipsnio Struktūra</Label>
+                  <Select name="structure" defaultValue="h2-h3">
+                      <SelectTrigger id="structure"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="h2-h3">Standartinė (H2, H3)</SelectItem>
+                          <SelectItem value="h2-only">Tik H2 Antraštės</SelectItem>
+                          <SelectItem value="h3-only">Tik H3 Antraštės</SelectItem>
+                          <SelectItem value="bold-only">Tik Paryškintos Antraštės</SelectItem>
+                      </SelectContent>
+                  </Select>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -277,7 +650,7 @@ export default function WritePage() {
             <div className="space-y-2">
                 <Label htmlFor="image">Pagrindinis Paveikslėlis</Label>
                 <div className="flex items-center gap-2">
-                    <Input id="image" name="image" type="file" className="flex-grow" />
+                    <Input id="image" name="image" type="file" className="flex-grow" required />
                     <Button type="button" onClick={handleGenerateImage} disabled={isImageLoading} className="flex-shrink-0">
                         {isImageLoading ? "Generuojama..." : "Generuoti Paveikslėlį"}
                     </Button>
@@ -288,7 +661,7 @@ export default function WritePage() {
                 <div className="space-y-2">
                     <Label>Sugeneruotas paveikslėlis</Label>
                     <div className="relative w-full max-w-sm h-64">
-                        <Image src={generatedImageUrl} alt="Sugeneruotas AI" layout="fill" objectFit="contain" className="rounded-md border" />
+                        <Image src={generatedImageUrl} alt="Sugeneruotas AI" fill sizes="100vw" style={{ objectFit: 'contain' }} className="rounded-md border" />
                     </div>
                     <p className="text-sm text-gray-500">Norėdami panaudoti šį paveikslėlį, išsaugokite jį ir įkelkite viršuje.</p>
                 </div>
@@ -309,8 +682,16 @@ export default function WritePage() {
       )}
 
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Straipsnio Redaktorius</CardTitle>
+          <div className="flex gap-2">
+            <Button onClick={handleGenerateFaq} disabled={isFaqLoading || !editableArticle}>
+              {isFaqLoading ? "Generuojama..." : "Generuoti D.U.K."}
+            </Button>
+            <Button onClick={handleProofread} disabled={isProofreading || !editableArticle}>
+              {isProofreading ? "Taisoma..." : "Tikrinti Rašybą su AI"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
             <Editor
@@ -318,6 +699,81 @@ export default function WritePage() {
                 value={editableArticle}
             />
         </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>SEO Analizė</CardTitle>
+          <CardDescription>Atlikite straipsnio SEO analizę ir gaukite patarimų, kaip jį patobulinti.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {isSeoOptimized ? (
+            <p className="text-green-500 font-semibold">Jūsų straipsnis dabar yra pilnai optimizuotas pagal geriausias SEO praktikas.</p>
+          ) : (
+            <>
+              <Button onClick={handleSeoAnalysis} disabled={isSeoLoading || !editableArticle}>
+                {isSeoLoading ? "Analizuojama..." : "Atlikti SEO Analizę"}
+              </Button>
+              {seoAnalysis && (
+                <div className="space-y-4 pt-4">
+                  <div className="text-center">
+                    <p className="text-lg font-semibold">SEO Įvertinimas</p>
+                    <p className={`text-4xl font-bold ${seoAnalysis.seoScore > 70 ? 'text-green-500' : 'text-yellow-500'}`}>
+                      {seoAnalysis.seoScore} / 100
+                    </p>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Privalumai:</h3>
+                    <ul className="list-disc list-inside text-green-500">
+                      {seoAnalysis.goodPoints.map((point: string, i: number) => <li key={i}>{point}</li>)}
+                    </ul>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Pasiūlymai:</h3>
+                    <ul className="list-disc list-inside text-yellow-500">
+                      {seoAnalysis.suggestions.map((suggestion: string, i: number) => <li key={i}>{suggestion}</li>)}
+                    </ul>
+                  </div>
+                  <Button onClick={handleRegenerateArticle} disabled={isRegenerating}>
+                    {isRegenerating ? "Atliekami pakeitimai..." : "Taikyti Pakeitimus"}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+          <CardHeader>
+              <CardTitle>Generuoti Antraščių Paveikslėlius</CardTitle>
+              <CardDescription>Pasirinkite antrastes kurioms sugeneruoti paveikslelius</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+              {headings.length > 0 ? (
+                <>
+                  <div className="space-y-2 pt-4">
+                      {headings.map(h => (
+                          <div key={h.title} className="flex items-center space-x-2">
+                              <Checkbox 
+                                  id={h.title} 
+                                  onCheckedChange={() => handleHeadingSelection(h.title)}
+                                  checked={selectedHeadings.includes(h.title)}
+                              />
+                              <label htmlFor={h.title} className="text-sm font-medium">
+                                  {h.title}
+                              </label>
+                          </div>
+                      ))}
+                  </div>
+                  <Button onClick={handleGenerateHeadingImages} disabled={isBatchImageLoading || selectedHeadings.length === 0 || !isSeoOptimized}>
+                      {isBatchImageLoading ? "Generuojama..." : "Generuoti ir Įterpti"}
+                  </Button>
+                </>
+              ) : (
+                <p className="text-sm text-gray-500">Straipsnyje nerasta H2 antraščių.</p>
+              )}
+          </CardContent>
       </Card>
 
       <Card>
@@ -342,7 +798,7 @@ export default function WritePage() {
             </div>
             <div className="flex justify-between items-center">
                 <p className="text-lg font-semibold">Kaina: 100 EUR</p>
-                <Button onClick={handlePublish} disabled={isPublishing || selectedSites.length === 0}>
+                <Button onClick={handlePublish} disabled={isPublishing || selectedSites.length === 0 || !isSeoOptimized}>
                     {isPublishing ? "Publikuojama..." : "Publikuoti"}
                 </Button>
             </div>
