@@ -31,14 +31,8 @@ async function generateImageUrl(prompt: string): Promise<string> {
 
     if (response.generatedImages && response.generatedImages.length > 0 && response.generatedImages[0].image?.imageBytes) {
         const imageBytes = response.generatedImages[0].image.imageBytes;
-        const buffer = Buffer.from(imageBytes as string, "base64");
-        const filename = `${Date.now()}_${Math.random().toString(36).substring(2, 12)}.png`;
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads');
-        await fs.mkdir(uploadsDir, { recursive: true });
-        const filePath = path.join(uploadsDir, filename);
-        await fs.writeFile(filePath, buffer);
-        
-        return `/uploads/${filename}`;
+        const imageBase64 = Buffer.from(imageBytes as string, "base64").toString('base64');
+        return `data:image/png;base64,${imageBase64}`;
     } else {
         throw new Error('Image generation failed or returned no images.');
     }

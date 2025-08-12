@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { availableSites, WordPressSite } from '@/lib/sites';
 import { JSDOM } from 'jsdom';
 import sharp from 'sharp';
-import * as fs from 'fs/promises';
 import * as path from 'path';
 
 interface WordPressMedia {
@@ -21,7 +20,7 @@ async function uploadImage(site: WordPressSite, imageFile: File, altText: string
     const webpBuffer = await convertToWebp(originalBuffer);
     
     const webpBlob = new Blob([new Uint8Array(webpBuffer)], { type: 'image/webp' });
-    const webpFilename = `${path.parse(imageFile.name).name}.webp`;
+    const webpFilename = `${path.parse(imageFile.name).name || Date.now()}.webp`;
 
     const formData = new FormData();
     formData.append('file', webpBlob, webpFilename);
@@ -54,25 +53,21 @@ async function processAndUploadImages(content: string, site: WordPressSite): Pro
 
         try {
             let imageBuffer: Buffer;
-            let originalFilename: string;
-
-            if (src.startsWith('/uploads/')) {
-                const filePath = path.join(process.cwd(), 'public', src);
-                imageBuffer = await fs.readFile(filePath);
-                originalFilename = path.basename(src);
+            
+            if (src.startsWith('data:image')) {
+                const base64Data = src.split(',')[1];
+                imageBuffer = Buffer.from(base64Data, 'base64');
             } else if (src.startsWith('http')) {
                 const imageResponse = await fetch(src);
                 const arrayBuffer = await imageResponse.arrayBuffer();
                 imageBuffer = Buffer.from(arrayBuffer);
-                originalFilename = 'external-image.jpg';
             } else {
-                continue; // Skip data URIs or other formats for now
+                continue; 
             }
             
             const webpBuffer = await convertToWebp(imageBuffer);
             const webpBlob = new Blob([new Uint8Array(webpBuffer)], { type: 'image/webp' });
-            const webpFilename = `${path.parse(originalFilename).name}.webp`;
-            const imageFile = new File([webpBlob], webpFilename, { type: 'image/webp' });
+            const imageFile = new File([webpBlob], `${Date.now()}.webp`, { type: 'image/webp' });
 
             const altText = img.getAttribute('alt') || 'image';
             const title = altText;
