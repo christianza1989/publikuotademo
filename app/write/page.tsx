@@ -40,7 +40,6 @@ export default function WritePage() {
   const [isSeoLoading, setIsSeoLoading] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [seoAnalysis, setSeoAnalysis] = useState<SeoAnalysis | null>(null);
-  const [isSeoOptimized, setIsSeoOptimized] = useState(false);
   const [isBatchImageLoading, setIsBatchImageLoading] = useState(false);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [editableArticle, setEditableArticle] = useState("");
@@ -468,7 +467,6 @@ export default function WritePage() {
         setMetaTitle(data.regeneratedMetaTitle);
         setMetaDescription(data.regeneratedMetaDescription);
         setSeoAnalysis(null); // Reset analysis after regeneration
-        setIsSeoOptimized(true); // Lock SEO analysis
     } catch (err) {
         setError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
@@ -706,39 +704,33 @@ export default function WritePage() {
           <CardDescription>Atlikite straipsnio SEO analizę ir gaukite patarimų, kaip jį patobulinti.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isSeoOptimized ? (
-            <p className="text-green-500 font-semibold">Jūsų straipsnis dabar yra pilnai optimizuotas pagal geriausias SEO praktikas.</p>
-          ) : (
-            <>
-              <Button onClick={handleSeoAnalysis} disabled={isSeoLoading || !editableArticle}>
-                {isSeoLoading ? "Analizuojama..." : "Atlikti SEO Analizę"}
+          <Button onClick={handleSeoAnalysis} disabled={isSeoLoading || !editableArticle}>
+            {isSeoLoading ? "Analizuojama..." : "Atlikti SEO Analizę"}
+          </Button>
+          {seoAnalysis && (
+            <div className="space-y-4 pt-4">
+              <div className="text-center">
+                <p className="text-lg font-semibold">SEO Įvertinimas</p>
+                <p className={`text-4xl font-bold ${seoAnalysis.seoScore > 70 ? 'text-green-500' : 'text-yellow-500'}`}>
+                  {seoAnalysis.seoScore} / 100
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold">Privalumai:</h3>
+                <ul className="list-disc list-inside text-green-500">
+                  {seoAnalysis.goodPoints.map((point: string, i: number) => <li key={i}>{point}</li>)}
+                </ul>
+              </div>
+              <div>
+                <h3 className="font-semibold">Pasiūlymai:</h3>
+                <ul className="list-disc list-inside text-yellow-500">
+                  {seoAnalysis.suggestions.map((suggestion: string, i: number) => <li key={i}>{suggestion}</li>)}
+                </ul>
+              </div>
+              <Button onClick={handleRegenerateArticle} disabled={isRegenerating}>
+                {isRegenerating ? "Atliekami pakeitimai..." : "Taikyti Pakeitimus"}
               </Button>
-              {seoAnalysis && (
-                <div className="space-y-4 pt-4">
-                  <div className="text-center">
-                    <p className="text-lg font-semibold">SEO Įvertinimas</p>
-                    <p className={`text-4xl font-bold ${seoAnalysis.seoScore > 70 ? 'text-green-500' : 'text-yellow-500'}`}>
-                      {seoAnalysis.seoScore} / 100
-                    </p>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Privalumai:</h3>
-                    <ul className="list-disc list-inside text-green-500">
-                      {seoAnalysis.goodPoints.map((point: string, i: number) => <li key={i}>{point}</li>)}
-                    </ul>
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Pasiūlymai:</h3>
-                    <ul className="list-disc list-inside text-yellow-500">
-                      {seoAnalysis.suggestions.map((suggestion: string, i: number) => <li key={i}>{suggestion}</li>)}
-                    </ul>
-                  </div>
-                  <Button onClick={handleRegenerateArticle} disabled={isRegenerating}>
-                    {isRegenerating ? "Atliekami pakeitimai..." : "Taikyti Pakeitimus"}
-                  </Button>
-                </div>
-              )}
-            </>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -765,7 +757,7 @@ export default function WritePage() {
                           </div>
                       ))}
                   </div>
-                  <Button onClick={handleGenerateHeadingImages} disabled={isBatchImageLoading || selectedHeadings.length === 0 || !isSeoOptimized}>
+                  <Button onClick={handleGenerateHeadingImages} disabled={isBatchImageLoading || selectedHeadings.length === 0}>
                       {isBatchImageLoading ? "Generuojama..." : "Generuoti ir Įterpti"}
                   </Button>
                 </>
@@ -797,7 +789,7 @@ export default function WritePage() {
             </div>
             <div className="flex justify-between items-center">
                 <p className="text-lg font-semibold">Kaina: 100 EUR</p>
-                <Button onClick={handlePublish} disabled={isPublishing || selectedSites.length === 0 || !isSeoOptimized}>
+                <Button onClick={handlePublish} disabled={isPublishing || selectedSites.length === 0}>
                     {isPublishing ? "Publikuojama..." : "Publikuoti"}
                 </Button>
             </div>
