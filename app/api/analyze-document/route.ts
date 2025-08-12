@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export async function POST(req: NextRequest) {
     try {
@@ -12,6 +13,7 @@ export async function POST(req: NextRequest) {
 
         const buffer = Buffer.from(await file.arrayBuffer());
         let textContent = '';
+        const isImage = file.type === 'image/png' || file.type === 'image/jpeg';
 
         try {
             if (file.type === 'application/pdf') {
@@ -34,6 +36,8 @@ export async function POST(req: NextRequest) {
                 });
             } else if (file.type === 'text/plain') {
                 textContent = buffer.toString('utf-8');
+            } else if (file.type === 'image/png' || file.type === 'image/jpeg') {
+                // Gemini Vision handles image analysis, so we pass the buffer directly
             } else {
                 return NextResponse.json({ error: `Unsupported file type: ${file.type}` }, { status: 400 });
             }
@@ -42,51 +46,75 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Failed to read content from the document.' }, { status: 500 });
         }
 
-        if (textContent.length < 50) {
+        if (!isImage && textContent.length < 50) {
              return NextResponse.json({ error: 'Document content is too short to analyze.' }, { status: 400 });
         }
 
-        const truncatedContent = textContent.substring(0, 15000);
+        if (isImage) {
+            const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
+            const visionModel = genAI.getGenerativeModel({ model: process.env.DOCUMENT_ANALYSIS_MODEL || "gemini-1.5-pro" });
 
-        const prompt = `Analyze the following text extracted from a document. Based on this text, suggest 5 SEO-friendly article titles and 10 relevant SEO keywords. Return the result as a single, valid JSON object with two keys: "titles" (an array of strings) and "keywords" (an array of strings). Do not include any other text or markdown formatting in your response.
+            const prompt = `Analyze the following image. Based on the text and content within the image, suggest a short topic title (2-3 words), 5 SEO-friendly article titles, and 10 relevant SEO keywords in Lithuanian. Return the result as a single, valid JSON object with three keys: "topic" (a string), "titles" (an array of strings), and "keywords" (an array of strings). Do not include any other text or markdown formatting in your response.`;
+            
+            const imagePart = {
+                inlineData: {
+                    data: buffer.toString("base64"),
+                    mimeType: file.type,
+                },
+            };
 
-        Document text:
-        ---
-        ${truncatedContent}
-        ---`;
+            const result = await visionModel.generateContent([prompt, imagePart]);
+            const responseText = result.response.text();
+            
+            try {
+                const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+                const analysis = JSON.parse(cleanedJson);
+                return NextResponse.json({ ...analysis, originalText: '' }); // Don't send back the image text
+            } catch (jsonError) {
+                console.error("Failed to parse JSON from Vision API response:", responseText);
+                throw new Error("AI returned an invalid response format from image analysis.");
+            }
 
-        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": process.env.SITE_URL || '',
-                "X-Title": process.env.SITE_NAME || '',
-            },
-            body: JSON.stringify({
-                "model": model,
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ]
-            })
-        });
+        } else {
+            const truncatedContent = textContent.substring(0, 15000);
+            const prompt = `Analyze the following text extracted from a document. Based on this text, suggest a short topic title (2-3 words), 5 SEO-friendly article titles, and 10 relevant SEO keywords. Return the result as a single, valid JSON object with three keys: "topic" (a string), "titles" (an array of strings), and "keywords" (an array of strings). Do not include any other text or markdown formatting in your response.
 
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error("OpenRouter API Error:", errorText);
-            throw new Error("OpenRouter API failed.");
-        }
+            Document text:
+            ---
+            ${truncatedContent}
+            ---`;
 
-        const data = await response.json();
-        const responseText = data.choices[0].message.content;
-        
-        try {
-            const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-            const analysis = JSON.parse(cleanedJson);
-            return NextResponse.json({ ...analysis, originalText: truncatedContent });
-        } catch (jsonError) {
-            console.error("Failed to parse JSON from AI response:", responseText);
-            throw new Error("AI returned an invalid response format.");
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer": process.env.SITE_URL || '',
+                    "X-Title": process.env.SITE_NAME || '',
+                },
+                body: JSON.stringify({
+                    "model": model,
+                    "messages": [{ "role": "user", "content": prompt }]
+                })
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error("OpenRouter API Error:", errorText);
+                throw new Error("OpenRouter API failed.");
+            }
+
+            const data = await response.json();
+            const responseText = data.choices[0].message.content;
+            
+            try {
+                const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+                const analysis = JSON.parse(cleanedJson);
+                return NextResponse.json({ ...analysis, originalText: truncatedContent });
+            } catch (jsonError) {
+                console.error("Failed to parse JSON from AI response:", responseText);
+                throw new Error("AI returned an invalid response format.");
+            }
         }
 
     } catch (error) {

@@ -34,6 +34,11 @@ async function getSeoAnalysis(text: string, keywords: string[], title: string, m
           ]
         }
 
+        IMPORTANT RULES:
+        - Focus only on the most critical, high-impact suggestions.
+        - If the seoScore is already above 85, be very selective and only suggest changes that provide significant value. Avoid minor stylistic suggestions.
+        - Do not suggest changes that contradict the goodPoints.
+
         Do not include any other text or markdown.
 
         ---

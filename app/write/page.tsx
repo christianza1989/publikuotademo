@@ -13,6 +13,7 @@ import { availableSites } from "@/lib/sites";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ModelSelector, models } from "@/components/model-selector";
 import dynamic from 'next/dynamic';
+import { CheckCircle, Lightbulb } from "lucide-react";
 
 const Editor = dynamic(() => import('@/components/editor'), { ssr: false });
 
@@ -25,6 +26,19 @@ interface SeoAnalysis {
     seoScore: number;
     goodPoints: string[];
     suggestions: string[];
+}
+
+interface ArticleData {
+  keywords: string[];
+  domain: string | null;
+  length: string | null;
+  tone: string | null;
+  structure: string | null;
+  customPrompt: string | null;
+  maintainStyle: boolean;
+  originalText: string;
+  model: string;
+  image?: string;
 }
 
 export default function WritePage() {
@@ -40,6 +54,7 @@ export default function WritePage() {
   const [isSeoLoading, setIsSeoLoading] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [seoAnalysis, setSeoAnalysis] = useState<SeoAnalysis | null>(null);
+  const [seoApplied, setSeoApplied] = useState(false);
   const [isBatchImageLoading, setIsBatchImageLoading] = useState(false);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [editableArticle, setEditableArticle] = useState("");
@@ -156,6 +171,7 @@ export default function WritePage() {
         if (!response.ok) {
             throw new Error(data.error || "Failed to analyze document.");
         }
+        setTopic(data.topic || '');
         setGeneratedTitles(data.titles || []);
         setKeywords(data.keywords || []);
         setOriginalText(data.originalText || '');
@@ -234,13 +250,20 @@ export default function WritePage() {
       const response = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: articleTitle, model: selectedModel }),
+        body: JSON.stringify({ 
+            prompt: articleTitle, 
+            keywords: keywords,
+            metaDescription: metaDescription,
+            model: selectedModel 
+        }),
       });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to generate image.");
-      }
-      setGeneratedImageUrl(data.imageUrl);
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to generate image.");
+        }
+        // Assuming the response contains a URL to the generated image.
+        // This will likely need adjustment based on the actual API response.
+        setGeneratedImageUrl(data.imageUrl);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
@@ -273,18 +296,31 @@ export default function WritePage() {
         }
     }
 
-    const articleData = {
+    const articleData: ArticleData = {
       keywords: keywords,
-      domain: formData.get("domain"),
-      length: formData.get("length"),
-      tone: formData.get("tone"),
-      structure: formData.get("structure"),
-      customPrompt: formData.get("customPrompt"),
+      domain: formData.get("domain") as string | null,
+      length: formData.get("length") as string | null,
+      tone: formData.get("tone") as string | null,
+      structure: formData.get("structure") as string | null,
+      customPrompt: formData.get("customPrompt") as string | null,
       maintainStyle: maintainStyle,
       originalText: originalText,
       model: selectedModel,
     };
 
+    if (documentFile && (documentFile.type === 'image/png' || documentFile.type === 'image/jpeg')) {
+        const reader = new FileReader();
+        reader.readAsDataURL(documentFile);
+        reader.onload = async () => {
+            articleData.image = reader.result as string;
+            generateArticle(articleData);
+        };
+    } else {
+        generateArticle(articleData);
+    }
+  };
+
+  const generateArticle = async (articleData: ArticleData) => {
     try {
       const response = await fetch("/api/generate", {
         method: "POST",
@@ -299,6 +335,7 @@ export default function WritePage() {
 
       const result = await response.json();
       setEditableArticle(result.article);
+      setSeoApplied(false); // Reset SEO status for new article
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
@@ -464,9 +501,17 @@ export default function WritePage() {
         });
 
         setEditableArticle(updatedArticle);
-        setMetaTitle(data.regeneratedMetaTitle);
-        setMetaDescription(data.regeneratedMetaDescription);
+        if (data.regeneratedTitle) {
+            setArticleTitle(data.regeneratedTitle);
+        }
+        if (data.regeneratedMetaTitle) {
+            setMetaTitle(data.regeneratedMetaTitle);
+        }
+        if (data.regeneratedMetaDescription) {
+            setMetaDescription(data.regeneratedMetaDescription);
+        }
         setSeoAnalysis(null); // Reset analysis after regeneration
+        setSeoApplied(true); // Mark SEO as applied
     } catch (err) {
         setError(err instanceof Error ? err.message : "An unknown error occurred.");
     } finally {
@@ -528,7 +573,7 @@ export default function WritePage() {
                     <Input 
                         id="document" 
                         type="file" 
-                        accept=".txt,.pdf,.docx,.xlsx"
+                        accept=".txt,.pdf,.docx,.xlsx,.png,.jpg"
                         onChange={(e) => setDocumentFile(e.target.files ? e.target.files[0] : null)}
                     />
                 </div>
@@ -699,43 +744,6 @@ export default function WritePage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>SEO Analizė</CardTitle>
-          <CardDescription>Atlikite straipsnio SEO analizę ir gaukite patarimų, kaip jį patobulinti.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button onClick={handleSeoAnalysis} disabled={isSeoLoading || !editableArticle}>
-            {isSeoLoading ? "Analizuojama..." : "Atlikti SEO Analizę"}
-          </Button>
-          {seoAnalysis && (
-            <div className="space-y-4 pt-4">
-              <div className="text-center">
-                <p className="text-lg font-semibold">SEO Įvertinimas</p>
-                <p className={`text-4xl font-bold ${seoAnalysis.seoScore > 70 ? 'text-green-500' : 'text-yellow-500'}`}>
-                  {seoAnalysis.seoScore} / 100
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold">Privalumai:</h3>
-                <ul className="list-disc list-inside text-green-500">
-                  {seoAnalysis.goodPoints.map((point: string, i: number) => <li key={i}>{point}</li>)}
-                </ul>
-              </div>
-              <div>
-                <h3 className="font-semibold">Pasiūlymai:</h3>
-                <ul className="list-disc list-inside text-yellow-500">
-                  {seoAnalysis.suggestions.map((suggestion: string, i: number) => <li key={i}>{suggestion}</li>)}
-                </ul>
-              </div>
-              <Button onClick={handleRegenerateArticle} disabled={isRegenerating}>
-                {isRegenerating ? "Atliekami pakeitimai..." : "Taikyti Pakeitimus"}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
           <CardHeader>
               <CardTitle>Generuoti Antraščių Paveikslėlius</CardTitle>
               <CardDescription>Pasirinkite antrastes kurioms sugeneruoti paveikslelius</CardDescription>
@@ -765,6 +773,75 @@ export default function WritePage() {
                 <p className="text-sm text-gray-500">Straipsnyje nerasta H2 antraščių.</p>
               )}
           </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>SEO Analizė</CardTitle>
+          <CardDescription>Atlikite straipsnio SEO analizę ir gaukite patarimų, kaip jį patobulinti.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {seoApplied ? (
+            <div className="text-center p-4 bg-green-50 rounded-md border border-green-200">
+              <p className="text-lg font-semibold text-green-700">Straipsnis sėkmingai optimizuotas!</p>
+              <p className="text-sm text-green-600">Pritaikius SEO pasiūlymus, jūsų straipsnis yra geriau paruoštas paieškos sistemoms.</p>
+            </div>
+          ) : (
+            <>
+              <Button onClick={handleSeoAnalysis} disabled={isSeoLoading || !editableArticle}>
+                {isSeoLoading ? "Analizuojama..." : "Atlikti SEO Analizę"}
+              </Button>
+              {seoAnalysis && (
+                <div className="space-y-6 pt-4">
+                  <div className="text-center p-6 bg-gray-50 rounded-xl">
+                    <p className="text-sm font-medium text-gray-500">SEO ĮVERTINIMAS</p>
+                    <p className={`text-6xl font-bold ${seoAnalysis.seoScore > 85 ? 'text-green-600' : seoAnalysis.seoScore > 60 ? 'text-yellow-500' : 'text-red-500'}`}>
+                      {seoAnalysis.seoScore}
+                      <span className="text-2xl text-gray-400">/ 100</span>
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <h3 className="font-semibold text-lg flex items-center text-green-700">
+                        <CheckCircle className="h-5 w-5 mr-2" />
+                        Privalumai
+                      </h3>
+                      <ul className="space-y-2 text-sm text-gray-700">
+                        {seoAnalysis.goodPoints.map((point: string, i: number) => (
+                          <li key={i} className="flex items-start">
+                            <CheckCircle className="h-4 w-4 mr-2 mt-1 text-green-500 flex-shrink-0" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div className="space-y-3">
+                      <h3 className="font-semibold text-lg flex items-center text-yellow-700">
+                        <Lightbulb className="h-5 w-5 mr-2" />
+                        Pasiūlymai
+                      </h3>
+                      <ul className="space-y-2 text-sm text-gray-700">
+                        {seoAnalysis.suggestions.map((suggestion: string, i: number) => (
+                          <li key={i} className="flex items-start">
+                            <Lightbulb className="h-4 w-4 mr-2 mt-1 text-yellow-500 flex-shrink-0" />
+                            <span>{suggestion}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                  {seoAnalysis.suggestions.length > 0 && (
+                    <div className="text-center pt-4">
+                      <Button onClick={handleRegenerateArticle} disabled={isRegenerating} size="lg">
+                        {isRegenerating ? "Atliekami pakeitimai..." : "Taikyti Pakeitimus"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
       </Card>
 
       <Card>

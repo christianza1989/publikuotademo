@@ -11,7 +11,7 @@ const applySeoSchema = z.object({
 
 async function applySeoSuggestions(text: string, suggestions: string[], title: string, metaDescription: string, model: string) {
     const prompt = `
-        Imagine you are a surgical code editor AI. Your task is to apply the following SEO suggestions to the provided HTML content, meta title, and meta description.
+        Imagine you are a surgical code editor AI. Your task is to apply the following SEO suggestions to the provided HTML content, article title, meta title, and meta description.
         Instead of rewriting the entire article, you must identify the specific HTML snippets that need changing and provide the exact "search" and "replace" values for each change.
         This is crucial to preserve images and other HTML elements that should not be altered.
 
@@ -23,6 +23,7 @@ async function applySeoSuggestions(text: string, suggestions: string[], title: s
               "replace": "<The new HTML snippet to replace it with>"
             }
           ],
+          "regeneratedTitle": "<The new, improved article title, if changed>",
           "regeneratedMetaTitle": "<The new, improved meta title>",
           "regeneratedMetaDescription": "<The new, improved meta description>"
         }
@@ -31,7 +32,10 @@ async function applySeoSuggestions(text: string, suggestions: string[], title: s
         - For each suggestion, create one or more objects in the "modifications" array.
         - The "search" string must be an EXACT snippet from the original article text to ensure a correct match. Include surrounding HTML tags.
         - The "replace" string is the new version of that snippet with the suggestion applied.
-        - If a suggestion is about the meta title or description, update the "regeneratedMetaTitle" and "regeneratedMetaDescription" fields. Do not create a "modifications" entry for them.
+        - If a suggestion is about the main article title, meta title, or description, update the "regeneratedTitle", "regeneratedMetaTitle", and "regeneratedMetaDescription" fields respectively. Do not create a "modifications" entry for them. If a title is not changed, return the original value.
+        - CRITICAL RULE: The regeneratedMetaTitle MUST be under 60 characters.
+        - CRITICAL RULE: The regeneratedMetaDescription MUST be under 160 characters.
+        - You MUST prioritize adhering to these character limits above all other suggestions.
         - Ensure all HTML in the "replace" strings is valid.
         - Preserve all existing HTML tags and attributes (like \`<img>\`, \`src\`, \`alt\`, \`style\`) that are not directly part of the suggestion.
 
@@ -40,7 +44,8 @@ async function applySeoSuggestions(text: string, suggestions: string[], title: s
         ${suggestions.join('\n- ')}
         ---
 
-        Original Meta Title: ${title}
+        Original Article Title: ${title}
+        Original Meta Title: ${metaDescription}
         Original Meta Description: ${metaDescription}
         Original Article Text (HTML):
         ---

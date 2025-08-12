@@ -11,6 +11,7 @@ const articleSchema = z.object({
     maintainStyle: z.boolean().optional(),
     originalText: z.string().optional(),
     model: z.string(),
+    image: z.string().optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
           return NextResponse.json({ error: validation.error.errors[0].message }, { status: 400 });
         }
 
-        const { keywords, domain, length, tone, structure, customPrompt, maintainStyle, originalText, model } = validation.data;
+        const { keywords, domain, length, tone, structure, customPrompt, maintainStyle, originalText, model, image } = validation.data;
 
         let styleInstruction = '';
         if (maintainStyle && originalText) {
@@ -86,6 +87,24 @@ export async function POST(req: NextRequest) {
               *   NENAUDOK H1, <html>, <head>, ar <body> žymių.
 
           Pradėk.`;
+        
+        const visionModel = process.env.ARTICLE_GENERATION_MODEL || 'google/gemini-flash-2.5';
+
+        const finalModel = process.env.ARTICLE_GENERATION_MODEL || 'google/gemini-flash-2.5';
+
+        const messages = image
+            ? [
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": prompt },
+                        { "type": "image_url", "image_url": { "url": image } }
+                    ]
+                }
+            ]
+            : [
+                { "role": "user", "content": prompt }
+            ];
 
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -96,10 +115,8 @@ export async function POST(req: NextRequest) {
                 "X-Title": process.env.SITE_NAME || '',
             },
             body: JSON.stringify({
-                "model": model,
-                "messages": [
-                    { "role": "user", "content": prompt }
-                ]
+                "model": finalModel,
+                "messages": messages
             })
         });
 

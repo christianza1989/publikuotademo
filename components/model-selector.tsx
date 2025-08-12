@@ -5,10 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Crown } from "lucide-react";
 
 export const models = [
-    { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Pro', isBest: true },
-    { id: 'anthropic/claude-3.5-sonnet', name: 'Claude Sonnet 4' },
-    { id: 'x-ai/grok-4', name: 'Grok 4' },
-    { id: 'openai/gpt-4o', name: 'GPT-5' },
+    { id: process.env.NEXT_PUBLIC_GEMINI_MODEL || 'google/gemini-2.5-flash', name: 'Gemini 2.5 Pro', isBest: true },
+    { id: process.env.NEXT_PUBLIC_CLAUDE_MODEL || 'anthropic/claude-3.5-sonnet', name: 'Claude Sonnet 4' },
+    { id: process.env.NEXT_PUBLIC_GROK_MODEL || 'x-ai/grok-4', name: 'Grok 4' },
+    { id: process.env.NEXT_PUBLIC_GPT_MODEL || 'openai/gpt-4o', name: 'GPT-5' },
 ];
 
 interface ModelSelectorProps {
