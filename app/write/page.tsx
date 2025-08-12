@@ -118,7 +118,6 @@ export default function WritePage() {
         data.results.forEach((result: { heading: string; imageUrl?: string; success: boolean }) => {
             if (result.success && result.imageUrl) {
                 const headingTag = `<h2>${result.heading}</h2>`;
-                // eslint-disable-next-line
                 const imageTag = `<figure class="image ck-widget ck-widget_selected" contenteditable="false"><img src="${result.imageUrl}" alt="${result.heading}"><div class="ck ck-reset ck-widget__resizer" style="width: 20px; height: 20px; display: none;"></div></figure>`;
                 updatedArticle = updatedArticle.replace(headingTag, `${headingTag}\n${imageTag}`);
             }

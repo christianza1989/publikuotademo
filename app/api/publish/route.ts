@@ -118,11 +118,7 @@ export async function POST(req: NextRequest) {
                     'Content-Type': 'application/json',
                     'Authorization': `Basic ${credentials}`,
                 },
-                body: JSON.stringify({
-                    title,
-                    content,
-                    status: 'publish',
-                }),
+                body: JSON.stringify(postData),
             });
 
             if (!createPostResponse.ok) {
