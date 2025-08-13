@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
 import { z } from 'zod';
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { generateEnglishPrompt } from '@/lib/utils';
 
 const imageRequestSchema = z.object({

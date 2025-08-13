@@ -131,11 +131,14 @@ export default function WritePage() {
         let updatedArticle = editableArticle;
         data.results.forEach((result: { heading: string; imageUrl?: string; success: boolean }) => {
             if (result.success && result.imageUrl) {
-                const headingTag = `<h2>${result.heading}</h2>`;
-                const imageTag = `<figure class="image ck-widget ck-widget_selected" contenteditable="false"><img src="${result.imageUrl}" alt="${result.heading}"><div class="ck ck-reset ck-widget__resizer" style="width: 20px; height: 20px; display: none;"></div></figure>`;
-                updatedArticle = updatedArticle.replace(headingTag, `${headingTag}\n${imageTag}`);
+                // Use a regular expression to find the <h2> tag and insert the image figure after it.
+                // This is more robust than simple string replacement or complex DOM manipulation for this case.
+                const headingRegex = new RegExp(`(<h2(?:>|\\s[^>]*>))(${result.heading})(<\\/h2>)`);
+                const imageTag = `<figure class="image"><img src="${result.imageUrl}" alt="${result.heading}"></figure>`;
+                updatedArticle = updatedArticle.replace(headingRegex, `$1$2$3${imageTag}`);
             }
         });
+
         setEditableArticle(updatedArticle);
         setSelectedHeadings([]);
 
@@ -563,8 +566,8 @@ export default function WritePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Generuoti Iš Dokumento</CardTitle>
-          <CardDescription>Įkelkite dokumentą (.txt, .pdf, .docx, .xlsx) ir leiskite AI automatiškai pasiūlyti pavadinimus bei raktinius žodžius.</CardDescription>
+          <CardTitle>Generuoti iš Dokumento ar Nuotraukos</CardTitle>
+          <CardDescription>Įkelkite dokumentą (.txt, .pdf, .docx, .xlsx) arba nuotrauką (.jpg, .png) ir leiskite AI automatiškai pasiūlyti pavadinimus bei raktinius žodžius.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
             <div className="flex items-end gap-2">

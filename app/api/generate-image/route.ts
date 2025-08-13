@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { generateEnglishPrompt } from '@/lib/utils';
 
 export async function POST(req: NextRequest) {
