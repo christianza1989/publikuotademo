@@ -455,10 +455,13 @@ export default function WritePage() {
     setError("");
     setSeoAnalysis(null);
     try {
+        // Remove base64 image data before sending to analysis to avoid payload size limits
+        const textForAnalysis = editableArticle.replace(/src="data:image\/[^;]+;base64,[^"]+"/g, 'src="about:blank"');
+
         const response = await fetch('/api/analyze-seo', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: editableArticle, keywords, title: articleTitle, metaDescription, model: selectedModel }),
+            body: JSON.stringify({ text: textForAnalysis, keywords, title: articleTitle, metaDescription, model: selectedModel }),
         });
         if (!response.ok) {
             const errorData = await response.json();
