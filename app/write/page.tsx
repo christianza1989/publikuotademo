@@ -484,11 +484,14 @@ export default function WritePage() {
     setIsRegenerating(true);
     setError("");
     try {
+        // Remove base64 image data before sending to analysis to avoid payload size limits
+        const textForRegeneration = editableArticle.replace(/src="data:image\/[^;]+;base64,[^"]+"/g, 'src="about:blank"');
+
         const response = await fetch('/api/apply-seo-suggestions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                text: editableArticle, 
+                text: textForRegeneration, 
                 suggestions: seoAnalysis.suggestions, 
                 title: articleTitle, 
                 metaDescription, 
