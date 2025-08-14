@@ -45,7 +45,12 @@ export async function POST(req: NextRequest) {
         }
 
         const data = await response.json();
-        const correctedText = data.choices[0].message.content;
+        let correctedText = data.choices[0].message.content;
+
+        if (!correctedText) throw new Error("AI did not return any content.");
+
+        // Clean up potential markdown code fences
+        correctedText = correctedText.replace(/^```html\s*/, '').replace(/```$/, '').trim();
         
         return NextResponse.json({ correctedText });
 
